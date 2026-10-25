@@ -4,7 +4,11 @@
 
 这个仓库解决两件事：
 
-1. **接入** —— 你的 AI 怎么收到 QQ 消息、怎么回话（文字 / 图片 / 文件 / 语音）
+1. **接入** —— 你的 AI 怎么收到 QQ 消息、怎么回话（文字 / 图片 / 文件）
+
+> 语音：**收**（转 mp3 后交给 Agent）是通的；**发**只留了接口，
+> 需要你自己实现 `workspace/voice_tts.py`（见 [docs/03](docs/03-给Agent的接口.md) 末尾）。
+> 仓库不含这部分实现，所以别指望 `--voice` 开箱能用。
 2. **动手** —— 你的 AI 怎么截图、点击、打字，操作这台电脑和那台手机
 
 以及一件更要紧的事：
@@ -67,7 +71,9 @@
 git clone <this repo> qq-agent-bridge
 cd qq-agent-bridge
 
-# 1. 装依赖（只有 requests 是必需的，其余是可选增强）
+# 1. 依赖
+#    核心（daemon + step + send）只用 Python 标准库，什么都不用装。
+#    下面这条会装桌面控制要用的 5 个包；如果你暂时不用 desktop.py，跳过它。
 pip install -r requirements.txt
 
 # 2. 复制配置，填你自己的两个号
@@ -196,11 +202,12 @@ python agents/phone.py setup-input --apk 你的路径/ADBKeyboard.apk
 | 部分 | 状态 |
 |---|---|
 | QQ 接入链路（daemon / step / 闸门） | ✅ 28 项自动测试 |
-| `phone.py` 核心动作 | ✅ 真机验证过（小米 13 / Android 16） |
+| `phone.py` 核心动作 | ✅ 真机验证过（小米 13 / Android 16，12 项动作 + 闸门三场景） |
 | `phone.py wireless` | ❌ 未验证（需要人工配对码） |
-| `phone.py setup-input` | ❌ 未验证（已查明不会重装） |
+| `phone.py setup-input` | ❌ 未验证（已查明不会重装，且中文输入已被间接覆盖） |
 | `phone.py diagnose` 报错分支 | ❌ 只验证了"设备正常"那条 |
 | `desktop.py` 动作类命令 | ❌ **一行都没跑过**（会打断正在用电脑的人） |
+| 语音**发送** | ❌ 未实现（只留了 `text_to_silk()` 接口） |
 
 完整说明和原因见 [docs/09-未验证的部分.md](docs/09-未验证的部分.md)。
 

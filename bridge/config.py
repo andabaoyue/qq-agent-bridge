@@ -42,7 +42,11 @@ _DEFAULT_CONFIG = {
     "listen": {
         "events_host": "127.0.0.1",
         "events_port": 5701,
-        "poll_host": "0.0.0.0",
+        # 默认只绑本机。理由见 docs/02：5702 上的 /wait_msg 是**破坏性**接口
+        # （取走即出队），而且同端口还挂着 /desktop_grant。绑 0.0.0.0 等于
+        # 让同网段任何机器都能抢走 QQ 消息、并读到主人的 QQ 号。
+        # 只有 Agent 跑在**另一台机器**上时，才需要改成 "0.0.0.0"。
+        "poll_host": "127.0.0.1",
         "poll_port": 5702,
         "inject_host": "127.0.0.1",
         "inject_port": 5703,

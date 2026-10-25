@@ -44,3 +44,6 @@ venv/
 *.so
 *.dylib
 
+
+# 临时审校文件
+_full-docs-for-review.md

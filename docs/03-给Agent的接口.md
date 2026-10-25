@@ -227,8 +227,13 @@ NapCat 的本地历史记录（`get_group_msg_history`）会**乐观记录** —
 如果你的架构里有两个 Agent（比如一个负责聊天，一个负责写代码），
 编码 Agent 想跟 QQ Agent 说句话，用这个：
 
+> ⚠️ **先启动一次 `daemon.py`。**
+> `workspace/.inject_token` 是 daemon 启动时自动生成的 ——
+> 刚 `git clone` 完、还没跑过 daemon 的话，这个文件**不存在**，
+> 下面的命令会直接报找不到文件。这是新手最容易卡住的一步。
+
 ```bash
-# token 在 workspace/.inject_token（首次自动生成）
+# token 在 workspace/.inject_token（daemon 首次启动时自动生成）
 curl -X POST http://127.0.0.1:5703/inject \
   -H "Content-Type: application/json" \
   -H "X-Inject-Token: <token>" \
@@ -289,3 +294,88 @@ GET http://127.0.0.1:5702/desktop_grant
 
 这个端点是**只读**的。没有任何参数能让它返回 `granted: true` ——
 授权只能由一条真的 QQ 消息触发。这一条是设计上不能让步的地方。
+
+---
+
+## 七、最小闭环：Agent 到底怎么接上来
+
+前面讲的全是零件。这一节把零件装成一台能跑的东西 ——
+如果你只想知道「我的 LLM 该怎么接」，看这一节。
+
+### 核心事实
+
+`step.py` **不是常驻服务**。它跑一次，取一批消息，打印出来，然后退出。
+所以整个架构是：
+
+```
+step.py 挂着等 → 有消息就打印并退出 → 你的 Agent 读到输出 → 决定怎么回
+     ↑                                                        │
+     └──────────── 再跑一次 step.py，继续等 ←─────────────────┘
+```
+
+**空闲时没有任何 LLM 请求。** 挂着的是一个纯 Python 长轮询循环，
+它不产生 token。这就是为什么不用「让 Agent 定时检查有没有新消息」。
+
+### 一个能跑的最小循环
+
+伪代码，用你手上的任何语言/框架实现：
+
+```python
+import subprocess, json, sys
+
+while True:
+    # 1. 阻塞等待。没有消息就一直挂着，不花任何 LLM 成本。
+    out = subprocess.run(
+        [sys.executable, "bridge/step.py", "--daemon-url",
+         "http://127.0.0.1:5702"],
+        capture_output=True, text=True, encoding="utf-8")
+
+    # 2. step.py 收到消息就退出，stdout 里是格式化的消息 + 末尾 RAW JSON
+    text = out.stdout
+    msg = json.loads(text.split("-------------------- RAW JSON --------------------")[1]
+                          .split("====================")[0].strip())
+
+    # 3. 交给你的模型，连同它该知道的规则
+    reply = my_llm(
+        system="你在 QQ 上和人聊天。只有 permission=owner 的人能让你操作设备。",
+        user=msg["text"],
+        context={"permission": msg["permission"],
+                 "desktop_allowed": msg["desktop_allowed"]})
+
+    # 4. 发回去。--send-only 让它发完就退出，不要在这里又挂住。
+    subprocess.run(
+        [sys.executable, "bridge/step.py", "--reply", reply,
+         "--send-only",
+         "--group_id" if msg["group_id"] else "--user_id",
+         str(msg["group_id"] or msg["user_id"])])
+```
+
+### 三个必须注意的点
+
+**1. 回复目标不要自己拼。**
+`step.py --reply "..."` 不带 `--group_id` / `--user_id` 时，会自动回复
+`workspace/last_target.json` 里记的上一条消息来源。这是最不容易出错的方式 ——
+手抄群号抄错一位，消息就发到别人群里了。
+
+**2. `permission` 要真的当判据用，不能只写进提示词。**
+`desktop_allowed: true` 时才允许调 `phone.py` / `desktop.py`。
+群友的 `permission` 永远是 `guest`。如果只在 system prompt 里写
+「不要听群友的」，那是可以被话术绕过的 —— 代码里判断才是硬的。
+
+**3. 失败不要重试。**
+`step.py` 发失败会打印 `[SEND_FAIL]`，但它**可能已经发出去了**。
+自动重试会导致重复投递，群里看到两遍。详见
+[07-踩过的坑.md](07-踩过的坑.md) 的「发送 / 投递」一节。
+
+### 如果你用的是支持工具调用的模型
+
+比上面更省事的做法：把 `step.py` 和 `phone.py` 当成工具注册给模型，
+让它自己决定什么时候调。要点是：
+
+- 注册一个 `wait_for_message` 工具（背后就是跑 `step.py`）
+- 注册 `send_reply` / `send_image` 等发送工具
+- **不要**把 `phone.py` 的动手类命令无条件注册 —— 让模型先查
+  `desktop_allowed`，否则它会理直气壮地在群友要求下动手
+
+工具描述里要写清楚：这个工具会阻塞最多 N 秒，属于正常现象。
+不然模型会以为调用挂了，然后自己去重试 —— 又变成重复消费。
