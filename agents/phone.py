@@ -746,6 +746,8 @@ def cmd_longpress(a):
     adb("shell", "input", "swipe", a.x, a.y, a.x, a.y, a.ms, serial=serial)
     log("longpress", {"x": a.x, "y": a.y, "ms": a.ms})
     print(f"已长按 ({a.x}, {a.y}) {a.ms}ms")
+    if a.settle:
+        time.sleep(a.settle)
     return 0
 
 
@@ -1008,6 +1010,10 @@ def build_parser():
     sp.add_argument("x", type=int)
     sp.add_argument("y", type=int)
     sp.add_argument("--ms", type=int, default=800)
+    # 长按常常会弹出菜单/进入编辑态，等一会儿再截图才看得见结果。
+    # 实机验证时发现 tap/swipe/key 都有 --settle 而 longpress 没有 ——
+    # 参数不一致会让调用方在「看起来该有的地方」撞一次 usage error。
+    sp.add_argument("--settle", type=float, default=0)
     sp.set_defaults(func=cmd_longpress)
 
     sp = sub.add_parser("text", help="输入文字（ASCII 直接打；中文需 ADBKeyboard）")
