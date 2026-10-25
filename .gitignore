@@ -47,3 +47,9 @@ venv/
 
 # 临时审校文件
 _full-docs-for-review.md
+
+# 调试临时输出
+_o.txt
+_e.txt
+_d.out
+_d.err
