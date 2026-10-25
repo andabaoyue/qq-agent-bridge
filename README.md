@@ -110,6 +110,7 @@ HTTP 上报指向 `http://127.0.0.1:5701`。
 | 我卡住了 | [07-踩过的坑.md](docs/07-踩过的坑.md) |
 | 设计上为什么这么做 | [08-设计决策.md](docs/08-设计决策.md) |
 | 哪些没验证过 | [09-未验证的部分.md](docs/09-未验证的部分.md) |
+| 为什么不做某些事 | [10-为什么不做这些事.md](docs/10-为什么不做这些事.md) |
 
 如果你只读一篇，读 [04-权限闸门.md](docs/04-权限闸门.md)。
 
@@ -129,17 +130,44 @@ agents/
   desktop.py           桌面控制（截图 / 鼠标 / 键盘）
   who_called.py        查「这次操作是谁触发的」
   utf8_console.py      Windows 控制台编码补丁
-docs/                  8 篇，全是踩坑换来的
+docs/                  10 篇，全是踩坑换来的
 tests/
   selftest.py          链路自测（28 项，不需要真 QQ）
   smoke.py             冒烟（11 项，不需要手机）
-tools/
-  ADBKeyboard.apk      打中文用的输入法
+  manual_device.py     实机验证环境（需要真手机）
 ```
 
-代码大约 4000 行，文档大约 8000 字。文档比代码长，这是故意的 ——
+代码大约 4000 行，文档大约一万字。文档比代码长，这是故意的 ——
 代码里的每一段注释都在回答「为什么不是另一种写法」，因为那些是真正
 花时间的地方，也是最容易在重构中被无声改回去的地方。
+
+---
+
+## 打中文要的那个 APK
+
+仓库里**不含** `ADBKeyboard.apk`。二进制文件不进代码树，理由见
+[10-为什么不做这些事.md](docs/10-为什么不做这些事.md)。
+
+需要的话自己下载，**并且自己核对**：
+
+```
+上游  https://github.com/senzhk/ADBKeyBoard
+文件  https://github.com/senzhk/ADBKeyBoard/raw/master/ADBKeyboard.apk
+
+SHA-256  E698ADEA5633135A067B038F9A0CF41BAA4DE09888713A81593FB2B9682CDC59
+大小     17374 bytes
+```
+
+```bash
+python agents/phone.py setup-input --apk 你的路径/ADBKeyboard.apk
+```
+
+> 这是一个**输入法**。IME 能读到你在任何输入框里打的内容，
+> 所以在按 `ime enable` 之前，值得想一秒这个文件是从哪来的。
+>
+> **不装也行。** 打纯 ASCII 走的是 `adb shell input text`，用不到它；
+> 只有中文/emoji 才需要。而且如果你的手机本来就有中文输入法，
+> 用 `phone.py text` 之外的方式输入也完全没问题。
 
 ---
 

@@ -35,3 +35,12 @@ daemon.log
 node_modules/
 venv/
 .venv/
+
+# 二进制 / 预编译产物：走 GitHub Releases，不进代码树
+# 理由见 docs/10-为什么不做这些事.md
+*.apk
+*.exe
+*.dll
+*.so
+*.dylib
+

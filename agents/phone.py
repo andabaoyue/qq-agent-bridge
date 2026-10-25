@@ -842,15 +842,53 @@ def cmd_clipboard(a):
 
 
 def cmd_setup_input(a):
-    """装 ADBKeyboard 并启用。不抢默认输入法——type_text 会在需要时自动临时切换。"""
+    """装 ADBKeyboard 并启用。不抢默认输入法——type_text 会在需要时自动临时切换。
+
+    ## APK 从哪来
+
+    仓库里**不再放**这个 APK（历史提交里有，已从 Git 历史中清除）。原因：
+    二进制文件进 Git 树会让克隆体积永久膨胀，而且源码树里躺着一个
+    预编译的输入法包，本身就是个需要解释的东西。
+
+    现在两条路：
+      1. `--apk <路径>` 指到你自己下载的文件（推荐，因为你能自己核对）
+      2. 不给 --apk 时，按约定去找本地 `tools/ADBKeyboard.apk`
+         （这个目录不在仓库里，是你自己建的；找不到就打印上游地址）
+
+    **刻意不自动下载**：一个装进系统输入法框架的包，不该由工具静默拉取。
+    下载动作要由人来做，这样"我装了什么"这个问题有明确答案。
+    """
     serial = pick_device(a.device)
-    apk = a.apk or os.path.join(
-        os.path.dirname(WORKSPACE), "tools", "ADBKeyboard.apk")
+
+    if a.apk:
+        apk = a.apk
+    else:
+        # 仓库不含 tools/，这是"用户自己放文件的地方"，不是随包附带的目录
+        apk = os.path.join(os.path.dirname(WORKSPACE), "tools", "ADBKeyboard.apk")
+
     if not os.path.isfile(apk):
         raise PhoneError(
-            f"找不到 {apk}。\n先下载：curl -sL -o tools\\ADBKeyboard.apk "
-            "https://github.com/senzhk/ADBKeyBoard/raw/master/ADBKeyboard.apk"
+            "找不到 ADBKeyboard.apk。\n"
+            "\n"
+            "这个文件不在仓库里（二进制不进 Git 树）。自己下载：\n"
+            "  https://github.com/senzhk/ADBKeyBoard/raw/master/ADBKeyboard.apk\n"
+            "  （上游项目：https://github.com/senzhk/ADBKeyBoard）\n"
+            "\n"
+            "下载后：\n"
+            "  python phone.py setup-input --apk 你的路径\\ADBKeyboard.apk\n"
+            "\n"
+            "参考校验值（2026-10-25 核对于上游 master 分支）：\n"
+            "  SHA-256  E698ADEA5633135A067B038F9A0CF41BAA4DE09888713A81593FB2B9682CDC59\n"
+            "  大小     17374 bytes\n"
+            "  签名     v1（APK 内含 META-INF/CERT.SF + CERT.RSA）\n"
+            "\n"
+            "⚠️ 校验值对不上就别装 —— 输入法能读到你在任何输入框里打的字。\n"
+            "\n"
+            "或者：如果你的手机已经有可用的中文输入法，**可以不装**。\n"
+            "type_text 打纯 ASCII 时走的是 `adb shell input text`，不需要它；\n"
+            "只有中文/emoji 才会用到。"
         )
+
     if not _has_adb_keyboard(serial):
         out = adb("install", "-r", apk, serial=serial, timeout=180, check=False)
         print(out)
@@ -1061,7 +1099,8 @@ def build_parser():
     sp.set_defaults(func=cmd_wireless)
 
     sp = sub.add_parser("setup-input", help="装 ADBKeyboard，让中文能打进去")
-    sp.add_argument("--apk", default=None, help="APK 路径（默认 workspace/tools/ADBKeyboard.apk）")
+    sp.add_argument("--apk", default=None,
+                    help="ADBKeyboard.apk 的路径（仓库不含此文件，需自己下载，见 docs/10）")
     sp.set_defaults(func=cmd_setup_input)
 
     return p
