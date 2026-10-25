@@ -1,0 +1,22 @@
+# ---------------------------------------------------------------- 必需
+# 本仓库的核心（daemon + step + send）只用标准库，不需要装任何东西。
+# 这一行是空的，因为 Python 3.9+ 自带 urllib/json/http.server 足够。
+
+# ---------------------------------------------------------------- 桌面控制（可选）
+# 只有用 agents/desktop.py 才需要
+pyautogui>=0.9.54
+mss>=9.0
+pygetwindow>=0.0.9
+pyperclip>=1.8
+Pillow>=9.0
+
+# ---------------------------------------------------------------- 手机控制（可选）
+# phone.py 不依赖任何 Python 包，它只是调 adb 命令行。
+# 需要的是系统层面的 Android platform-tools：
+#   winget install --id Google.PlatformTools -e
+
+# ---------------------------------------------------------------- 语音（可选，本仓库未实现）
+# step.py 留了接口：workspace/voice_tts.py 提供 text_to_silk() / DEFAULT_VOICE / VOICES。
+# 想实现的话大致需要：
+# edge-tts>=6.1.9
+# pysilk-mod 或 NapCat 自带的原生 silk 模块

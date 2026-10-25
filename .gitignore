@@ -1,0 +1,37 @@
+# ---- 运行时产物：绝不进仓库 ----
+workspace/
+.selftest/
+__pycache__/
+*.pyc
+*.pyo
+
+# 配置里含真实 QQ 号，每个人自己复制模板
+bridge/config.json
+
+# token
+.inject_token
+*.token
+
+# 日志与数据
+*.log
+*.jsonl
+pending_messages.json
+last_target.json
+self_message_ids.txt
+phone_shots/
+shots/
+media_inbox/
+phone_log.jsonl
+desktop.log
+daemon.log
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 依赖（本项目没有，但防一手）
+node_modules/
+venv/
+.venv/

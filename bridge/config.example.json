@@ -1,0 +1,11 @@
+{
+  "_comment": "把 bot_qq 和 owner_qq 改成你自己的。其余字段都有默认值，可以先不动；完整说明见 docs/02-配置.md",
+  "bot_qq": 123456789,
+  "owner_qq": 987654321,
+  "bot_names": ["小助手"],
+  "group_filter": {
+    "mode": "mention_only",
+    "allow_groups": [],
+    "block_groups": []
+  }
+}
