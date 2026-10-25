@@ -406,6 +406,25 @@ def run(tmpdir):
         check("rapid second message is delivered but tagged throttled",
               ok, got[0].get("throttled") if got else "no message")
 
+        # ---- 13. 端口独占：第二个实例必须启动失败 ----
+        #
+        # 这条覆盖一个真实事故：Windows 上 SO_REUSEADDR 允许两个进程绑
+        # 同一个端口，于是两个 daemon 能同时"启动成功"，连接被随机分给
+        # 其中一个。表现是改了配置不生效、日志和实际行为对不上。
+        # 修法是 _ExclusiveServer 关掉 allow_reuse_address。
+        # 这个测试保证它不会被改回去。
+        second = subprocess.run(
+            [sys.executable, os.path.join(BRIDGE, "daemon.py")],
+            cwd=ROOT, env=env, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=30)
+        check("second daemon instance refuses to start (port is exclusive)",
+              second.returncode != 0,
+              f"exit={second.returncode}")
+        check("bind failure names the port and how to find the owner",
+              "netstat" in (second.stderr or "") and
+              str(ports[0]) in (second.stderr or ""),
+              "message mentions netstat + port")
+
     finally:
         proc.terminate()
         try:

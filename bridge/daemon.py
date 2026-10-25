@@ -1620,6 +1620,86 @@ def _inject_token_ok(given):
         return False
 
 
+class _ExclusiveServer(ThreadingHTTPServer):
+    """独占端口的 HTTP server。
+
+    ## 为什么必须关掉 allow_reuse_address
+
+    这是本项目踩过的最隐蔽的一个坑，值得完整记下来。
+
+    `http.server.HTTPServer` 的 `allow_reuse_address` 默认是 **1**，
+    它在 `server_bind()` 里会设 `SO_REUSEADDR`。
+
+    在 Linux 上，这个选项的语义是「TIME_WAIT 状态的端口可以复用」——
+    两个**正在监听**的进程仍然不能抢同一个端口，所以无害。
+
+    **但 Windows 的语义不一样：SO_REUSEADDR 允许两个进程绑同一个端口。**
+    实测确认：
+
+        s1 = socket(...); s1.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        s1.bind(('127.0.0.1', 15999)); s1.listen(1)   # OK
+        s2 = socket(...); s2.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        s2.bind(('127.0.0.1', 15999))                  # ← 也 OK！
+
+    后果：两个 daemon 实例可以同时"启动成功"，都打印
+    `QQ bridge daemon started`，然后**连接被随机分给其中一个**。
+
+    这解释了一个真实事故：验证部署流程时，测试实例和生产实例同时
+    占着 5701/5702，测试请求有时打到生产 daemon 上，日志和状态
+    互相矛盾，排查了很久才定位。用户遇到这个现象会完全摸不着头脑
+    —— 改了配置没生效、日志和实际行为对不上、消息偶尔"丢"。
+
+    ## 代价
+
+    进程重启时如果上个进程还在 TIME_WAIT，可能要等几十秒才能重新绑。
+    但那个代价是**可见的**（明确报错 + 明确原因），
+    远好于「两个实例静默并存、行为随机」。
+    """
+    allow_reuse_address = False
+    daemon_threads = True
+
+
+def _bind_or_die(host, port, handler, label):
+    """绑端口；被占用时给出**人能看懂**的错误并退出。
+
+    用 _ExclusiveServer 而不是 ThreadingHTTPServer —— 理由见那个类的注释，
+    简单说：Windows 上 allow_reuse_address=1 会让两个实例同时绑成功。
+    """
+    try:
+        return _ExclusiveServer((host, int(port)), handler)
+    except OSError as e:
+        # 🔴 只走 logger，不另外 print。
+        #   logger 已经挂了 FileHandler + basicConfig 的 stderr handler，
+        #   再 print 一遍会让同一条错误在控制台上出现两次（实测很干扰）。
+        #
+        #   也不在消息里放 emoji：Windows 控制台默认编码可能是 GBK，
+        #   一个 ⚠ 字符就能让**报错本身**抛 UnicodeEncodeError，
+        #   用户看到的是一条 traceback 盖住了真正的原因。
+        logger.error(
+            "\n" + "=" * 62 + "\n"
+            "启动失败：%s 端口 %s:%s 绑不上。\n"
+            "\n"
+            "系统报错：%s\n"
+            "\n"
+            "最常见的原因：已经有一个实例在跑了。\n"
+            "\n"
+            "查是谁占着（Windows）：\n"
+            "  netstat -ano | findstr :%s\n"
+            "  然后 tasklist /FI \"PID eq <上面那个PID>\"\n"
+            "\n"
+            "也可能：\n"
+            "  - 端口写错了（config.json 的 listen 段）\n"
+            "  - 上一次的进程没退干净（任务管理器里结束它）\n"
+            "  - 别的程序恰好用了这个端口（改个端口号）\n"
+            "\n"
+            "不要忽略这个错误就继续 —— 你之后看到的所有现象\n"
+            "都会来自那个旧的进程，而不是你刚启动的这个。\n"
+            + "=" * 62,
+            label, host, port, e, port)
+        sys.exit(2)
+        sys.exit(2)
+
+
 def run_server():
     load_last_target()
     # 先把上次没被取走的消息装回队列，再开始收新的。
@@ -1635,20 +1715,22 @@ def run_server():
     #   NapCat 是 httpClient 模式，主动 POST 到 http://127.0.0.1:5701，
     #   **不需要**对外监听。绑 0.0.0.0 等于同网段任何一台设备都能直接
     #   伪造消息（实测过：从局域网另一台机器 POST 到 5701 返回 200）。
-    #   轮询口默认绑 0.0.0.0 是为了兼容「Agent 跑在另一台机器上」的部署，
-    #   如果你只用本机，把它改成 127.0.0.1 更安全。
-    server_events = ThreadingHTTPServer(
-        (L["events_host"], int(L["events_port"])), OneBotWebhookHandler)
-    server_poll = ThreadingHTTPServer(
-        (L["poll_host"], int(L["poll_port"])), LongPollingHandler)
+    #   轮询口默认也绑 127.0.0.1；Agent 跑在另一台机器上时才需要改。
+    server_events = _bind_or_die(
+        L["events_host"], L["events_port"], OneBotWebhookHandler, "事件口")
+    server_poll = _bind_or_die(
+        L["poll_host"], L["poll_port"], LongPollingHandler, "轮询口")
 
     # 🔴 注入口单独一个端口，**只绑本机**。
     #   为什么不复用轮询口：轮询口可能是 0.0.0.0，同网段任何机器都能连；
     #   把「能往队列里塞消息」的能力挂在那儿，等于把写权限开出局域网。
     #   独立端口 + 只绑本机 + 独立 token，三把锁。
+    #
+    #   注入口失败**不致命**（消息收发仍可用，只是另一个 AI 说不了话），
+    #   所以这里只告警不退出 —— 但要把原因说清楚。
     if CFG.get("injection", {}).get("enabled", True):
         try:
-            server_inject = ThreadingHTTPServer(
+            server_inject = _ExclusiveServer(
                 (L["inject_host"], int(L["inject_port"])), LongPollingHandler)
             threading.Thread(target=server_inject.serve_forever,
                              daemon=True).start()

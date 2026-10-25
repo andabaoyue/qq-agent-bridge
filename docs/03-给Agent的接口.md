@@ -343,11 +343,10 @@ while True:
                  "desktop_allowed": msg["desktop_allowed"]})
 
     # 4. 发回去。--send-only 让它发完就退出，不要在这里又挂住。
+    #    注意这里**没有**传 --group_id / --user_id —— step.py 会自己
+    #    回复 last_target.json 里记的上一条消息来源，比手抄群号可靠。
     subprocess.run(
-        [sys.executable, "bridge/step.py", "--reply", reply,
-         "--send-only",
-         "--group_id" if msg["group_id"] else "--user_id",
-         str(msg["group_id"] or msg["user_id"])])
+        [sys.executable, "bridge/step.py", "--reply", reply, "--send-only"])
 ```
 
 ### 三个必须注意的点
@@ -356,6 +355,9 @@ while True:
 `step.py --reply "..."` 不带 `--group_id` / `--user_id` 时，会自动回复
 `workspace/last_target.json` 里记的上一条消息来源。这是最不容易出错的方式 ——
 手抄群号抄错一位，消息就发到别人群里了。
+
+什么时候才需要显式指定：你要主动发给**不是刚跟你说话的那个人**时
+（比如主人让你去通知某个群）。那种情况下目标是你自己定的，不是"回复"。
 
 **2. `permission` 要真的当判据用，不能只写进提示词。**
 `desktop_allowed: true` 时才允许调 `phone.py` / `desktop.py`。
