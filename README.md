@@ -80,9 +80,12 @@ pip install -r requirements.txt
 cp bridge/config.example.json bridge/config.json
 #    编辑 bridge/config.json：bot_qq = 机器人号，owner_qq = 你的号
 
-# 3. 先跑自测，确认代码在你机器上是好的
-python tests/selftest.py     # 28 项，不需要真 QQ
+# 3. 先跑测试，确认代码在你机器上是好的
+#    注意：跑之前确认 5701/5702/5703 和 3000 都没被占用。
+#    有 NapCat 或另一个 daemon 在跑的话，先关掉。
+python tests/selftest.py     # 30 项，不需要真 QQ
 python tests/smoke.py        # 11 项，不需要手机
+python tests/e2e.py          # 10 项，默认端口 + 假 NapCat
 
 # 4. 起 daemon
 python bridge/daemon.py
@@ -138,8 +141,9 @@ agents/
   utf8_console.py      Windows 控制台编码补丁
 docs/                  10 篇，全是踩坑换来的
 tests/
-  selftest.py          链路自测（28 项，不需要真 QQ）
+  selftest.py          链路自测（30 项，不需要真 QQ）
   smoke.py             冒烟（11 项，不需要手机）
+  e2e.py               端到端（10 项，默认端口 + 假 NapCat）
   manual_device.py     实机验证环境（需要真手机）
 ```
 
@@ -201,7 +205,7 @@ python agents/phone.py setup-input --apk 你的路径/ADBKeyboard.apk
 
 | 部分 | 状态 |
 |---|---|
-| QQ 接入链路（daemon / step / 闸门） | ✅ 28 项自动测试 |
+| QQ 接入链路（daemon / step / 闸门） | ✅ 30 项自测 + 10 项端到端 |
 | `phone.py` 核心动作 | ✅ 真机验证过（小米 13 / Android 16，12 项动作 + 闸门三场景） |
 | `phone.py wireless` | ❌ 未验证（需要人工配对码） |
 | `phone.py setup-input` | ❌ 未验证（已查明不会重装，且中文输入已被间接覆盖） |
